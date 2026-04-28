@@ -95,6 +95,7 @@ final class GenerateStubsCommand
                 $classMapGenerator->renderReport(
                     $classMap['duplicates'],
                     $classMap['skippedUnsafeFiles'],
+                    $classMap['skippedReferenceOnlyFiles'],
                     $classMap['scannedFiles'],
                     count($classMap['map'])
                 )

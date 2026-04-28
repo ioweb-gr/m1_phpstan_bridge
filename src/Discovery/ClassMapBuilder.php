@@ -11,7 +11,8 @@ final class ClassMapBuilder
      *     map: array<string, string>,
      *     duplicates: array<string, list<string>>,
      *     scannedFiles: int,
-     *     skippedUnsafeFiles: list<string>
+     *     skippedUnsafeFiles: list<string>,
+     *     skippedReferenceOnlyFiles: list<string>
      * }
      */
     public function build(string $projectRoot, bool $includeZend = true): array
@@ -30,6 +31,7 @@ final class ClassMapBuilder
         $found = [];
         $scannedFiles = 0;
         $skippedUnsafeFiles = [];
+        $skippedReferenceOnlyFiles = [];
 
         foreach ($roots as $root) {
             if (!is_dir($root)) {
@@ -47,16 +49,21 @@ final class ClassMapBuilder
                     continue;
                 }
 
-                foreach ($this->declaredSymbols($file) as $className) {
+                $declaredSymbols = $this->declaredSymbols($file);
+                $fallbackClass = $this->fallbackClassName($projectRoot, $file);
+
+                if ($declaredSymbols === []) {
+                    $skippedReferenceOnlyFiles[] = $file;
+                    continue;
+                }
+
+                foreach ($declaredSymbols as $className) {
                     $found[$className] ??= [];
                     $found[$className][] = $file;
                 }
 
-                $fallbackClass = $this->fallbackClassName($projectRoot, $file);
-                if ($fallbackClass !== null) {
-                    $found[$fallbackClass] ??= [];
-                    $found[$fallbackClass][] = $file;
-                }
+                // The path-convention fallback is intentionally only used as a
+                // consistency check for files that actually declare that symbol.
             }
         }
 
@@ -81,6 +88,7 @@ final class ClassMapBuilder
             'duplicates' => $duplicates,
             'scannedFiles' => $scannedFiles,
             'skippedUnsafeFiles' => $skippedUnsafeFiles,
+            'skippedReferenceOnlyFiles' => $skippedReferenceOnlyFiles,
         ];
     }
 
@@ -126,7 +134,11 @@ final class ClassMapBuilder
                 continue;
             }
 
-            if (!in_array($token[0], [T_CLASS, T_INTERFACE, T_TRAIT], true)) {
+            if (!in_array($token[0], $this->declarationTokenTypes(), true)) {
+                continue;
+            }
+
+            if (!$this->previousMeaningfulTokenAllowsDeclaration($tokens, $i - 1)) {
                 continue;
             }
 
@@ -136,6 +148,10 @@ final class ClassMapBuilder
 
             $name = $this->readSymbolName($tokens, $i + 1);
             if ($name === null) {
+                continue;
+            }
+
+            if (!$this->symbolNameLooksLikeDeclaration($tokens, $i + 1)) {
                 continue;
             }
 
@@ -204,6 +220,64 @@ final class ClassMapBuilder
         return false;
     }
 
+    /**
+     * @param array<int, mixed> $tokens
+     */
+    private function previousMeaningfulTokenAllowsDeclaration(array $tokens, int $offset): bool
+    {
+        for ($i = $offset; $i >= 0; $i--) {
+            $token = $tokens[$i];
+            if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if (is_array($token)) {
+                return in_array($token[0], [T_OPEN_TAG, T_NAMESPACE, T_ABSTRACT, T_FINAL], true);
+            }
+
+            return in_array($token, [';', '{', '}'], true);
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, mixed> $tokens
+     */
+    private function symbolNameLooksLikeDeclaration(array $tokens, int $offset): bool
+    {
+        $foundName = false;
+        $count = count($tokens);
+
+        for ($i = $offset; $i < $count; $i++) {
+            $token = $tokens[$i];
+            if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if (!$foundName) {
+                if (is_array($token) && $token[0] === T_STRING) {
+                    $foundName = true;
+                    continue;
+                }
+
+                return false;
+            }
+
+            if ($token === '{') {
+                return true;
+            }
+
+            if (is_array($token) && in_array($token[0], [T_EXTENDS, T_IMPLEMENTS], true)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
     private function fallbackClassName(string $projectRoot, string $file): ?string
     {
         $normalizedFile = str_replace('\\', '/', $file);
@@ -230,6 +304,20 @@ final class ClassMapBuilder
         }
 
         return null;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function declarationTokenTypes(): array
+    {
+        $tokens = [T_CLASS, T_INTERFACE, T_TRAIT];
+
+        if (defined('T_ENUM')) {
+            $tokens[] = constant('T_ENUM');
+        }
+
+        return $tokens;
     }
 
     private function isExcludedPath(string $file): bool

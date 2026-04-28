@@ -66,21 +66,28 @@ PHP;
     /**
      * @param array<string, list<string>> $duplicates
      * @param list<string> $skippedUnsafeFiles
+     * @param list<string> $skippedReferenceOnlyFiles
      */
-    public function renderReport(array $duplicates, array $skippedUnsafeFiles, int $scannedFiles, int $classCount): string
-    {
+    public function renderReport(
+        array $duplicates,
+        array $skippedUnsafeFiles,
+        array $skippedReferenceOnlyFiles,
+        int $scannedFiles,
+        int $classCount
+    ): string {
         $lines = [
             '# Magento Classmap Report',
             '',
             sprintf('- Scanned PHP files: %d', $scannedFiles),
             sprintf('- Classes/interfaces/traits mapped: %d', $classCount),
-            sprintf('- Duplicate/conflicting symbols: %d', count($duplicates)),
+            sprintf('- Duplicate/conflicting declarations: %d', count($duplicates)),
             sprintf('- Files skipped because they contain executable top-level code: %d', count($skippedUnsafeFiles)),
+            sprintf('- Files skipped because they contain no declarations: %d', count($skippedReferenceOnlyFiles)),
             '',
         ];
 
-        if ($duplicates === [] && $skippedUnsafeFiles === []) {
-            $lines[] = 'No duplicate symbols found.';
+        if ($duplicates === [] && $skippedUnsafeFiles === [] && $skippedReferenceOnlyFiles === []) {
+            $lines[] = 'No duplicate declarations found.';
             $lines[] = '';
 
             return implode("\n", $lines);
@@ -104,6 +111,16 @@ PHP;
             $lines[] = '';
 
             foreach ($skippedUnsafeFiles as $file) {
+                $lines[] = sprintf('- `%s`', $file);
+            }
+        }
+
+        if ($skippedReferenceOnlyFiles !== []) {
+            $lines[] = '';
+            $lines[] = '## Skipped Files Without Declarations';
+            $lines[] = '';
+
+            foreach ($skippedReferenceOnlyFiles as $file) {
                 $lines[] = sprintf('- `%s`', $file);
             }
         }
