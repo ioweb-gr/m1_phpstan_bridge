@@ -1,0 +1,27 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Ioweb\M1PhpStanBridge\Command\GenerateStubsCommand;
+
+$autoloadPaths = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$autoloaded = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (is_file($autoloadPath)) {
+        require $autoloadPath;
+        $autoloaded = true;
+        break;
+    }
+}
+
+if (!$autoloaded) {
+    fwrite(STDERR, "Unable to find Composer autoload.php. Run composer install first.\n");
+    exit(1);
+}
+
+exit((new GenerateStubsCommand())->run($argv));

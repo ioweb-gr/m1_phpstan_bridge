@@ -1,0 +1,5 @@
+/.idea/
+/vendor/
+/stubs/
+/tmp-meta*/
+composer.phar

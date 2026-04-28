@@ -1,0 +1,3 @@
+[tools]
+php = { version = "8.2", os = ["linux"] }
+"win-php:php" = { version = "8.2", os = ["windows"] }
