@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ioweb\M1PhpStanBridge\Command;
 
 use Ioweb\M1PhpStanBridge\Generator\BridgeFileWriter;
+use Ioweb\M1PhpStanBridge\Generator\PhpStanExtensionGenerator;
 use Ioweb\M1PhpStanBridge\Generator\PhpStanConfigGenerator;
 use Ioweb\M1PhpStanBridge\Generator\StructuralStubGenerator;
 use Ioweb\M1PhpStanBridge\Map\AliasMapWriter;
@@ -42,6 +43,7 @@ final class GenerateStubsCommand
             $fileWriter = new BridgeFileWriter();
             $structuralStubs = new StructuralStubGenerator();
             $configGenerator = new PhpStanConfigGenerator();
+            $extensionGenerator = new PhpStanExtensionGenerator();
 
             $overrides = $parser->parseDirectory($metaDirectory);
             $maps = $builder->build($overrides);
@@ -75,6 +77,16 @@ final class GenerateStubsCommand
                 if ($fileWriter->writeIfChanged($path, $contents)) {
                     $written[] = $path;
                 }
+            }
+
+            foreach ($extensionGenerator->files($bridgeDirectory) as $path => $contents) {
+                if ($fileWriter->writeIfChanged($path, $contents)) {
+                    $written[] = $path;
+                }
+            }
+
+            if ($this->ensureComposerAutoloadDev($projectRoot, $fileWriter)) {
+                $written[] = $projectRoot . DIRECTORY_SEPARATOR . 'composer.json';
             }
 
             $configPath = $bridgeDirectory . DIRECTORY_SEPARATOR . 'phpstan-magento.neon';
@@ -313,9 +325,15 @@ final class GenerateStubsCommand
      */
     private function validateGeneratedBridge(string $projectRoot, string $bridgeDirectory, array $mapFiles): int
     {
+        $dumpAutoloadExitCode = $this->dumpComposerAutoload($projectRoot);
+        if ($dumpAutoloadExitCode !== 0) {
+            return $dumpAutoloadExitCode;
+        }
+
         $phpFiles = array_merge(
             glob($bridgeDirectory . DIRECTORY_SEPARATOR . '*.php') ?: [],
-            glob($bridgeDirectory . DIRECTORY_SEPARATOR . 'generated' . DIRECTORY_SEPARATOR . '*.php') ?: []
+            glob($bridgeDirectory . DIRECTORY_SEPARATOR . 'generated' . DIRECTORY_SEPARATOR . '*.php') ?: [],
+            glob($bridgeDirectory . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'PHPStan' . DIRECTORY_SEPARATOR . '*.php') ?: []
         );
 
         foreach ($phpFiles as $phpFile) {
@@ -347,23 +365,12 @@ final class GenerateStubsCommand
     private function runPhpStanSmoke(string $projectRoot, string $bridgeDirectory): int
     {
         $phpStan = $this->firstExistingFile([
-            dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'phpstan',
             $projectRoot . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'phpstan',
+            dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'bin' . DIRECTORY_SEPARATOR . 'phpstan',
         ]);
 
         if ($phpStan === null) {
             fwrite(STDERR, "Unable to find vendor/bin/phpstan for smoke validation.\n");
-
-            return 1;
-        }
-
-        $autoload = $this->firstExistingFile([
-            dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php',
-            $projectRoot . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php',
-        ]);
-
-        if ($autoload === null) {
-            fwrite(STDERR, "Unable to find Composer autoload.php for smoke validation.\n");
 
             return 1;
         }
@@ -385,11 +392,10 @@ $helper = Mage::helper('catalog');
 PHP);
 
         $command = sprintf(
-            'php %s analyse %s --configuration=%s --autoload-file=%s --level=0 --no-progress --error-format=raw --memory-limit=1G',
+            'php %s analyse %s --configuration=%s --level=0 --no-progress --error-format=raw --memory-limit=1G',
             escapeshellarg($phpStan),
             escapeshellarg($smokeFile),
-            escapeshellarg($bridgeDirectory . DIRECTORY_SEPARATOR . 'phpstan-magento.neon'),
-            escapeshellarg($autoload)
+            escapeshellarg($bridgeDirectory . DIRECTORY_SEPARATOR . 'phpstan-magento.neon')
         );
 
         exec($command . ' 2>&1', $output, $exitCode);
@@ -434,5 +440,59 @@ PHP);
         }
 
         return null;
+    }
+
+    private function ensureComposerAutoloadDev(string $projectRoot, BridgeFileWriter $fileWriter): bool
+    {
+        $composerJsonPath = $projectRoot . DIRECTORY_SEPARATOR . 'composer.json';
+        if (!is_file($composerJsonPath)) {
+            return false;
+        }
+
+        $contents = file_get_contents($composerJsonPath);
+        if ($contents === false) {
+            throw new \RuntimeException(sprintf('Unable to read composer.json: %s', $composerJsonPath));
+        }
+
+        $composer = json_decode($contents, true);
+        if (!is_array($composer)) {
+            throw new \RuntimeException(sprintf('Unable to parse composer.json: %s', $composerJsonPath));
+        }
+
+        $composer['autoload-dev'] ??= [];
+        $composer['autoload-dev']['psr-4'] ??= [];
+        $composer['autoload-dev']['psr-4']['M1PhpStanBridgeGenerated\\'] = '.m1_phpstan_bridge/src/';
+
+        $encoded = json_encode(
+            $composer,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+
+        if ($encoded === false) {
+            throw new \RuntimeException(sprintf('Unable to encode composer.json: %s', $composerJsonPath));
+        }
+
+        return $fileWriter->writeIfChanged($composerJsonPath, $encoded . "\n");
+    }
+
+    private function dumpComposerAutoload(string $projectRoot): int
+    {
+        $composerCommand = getenv('M1_PHPSTAN_BRIDGE_COMPOSER_COMMAND') ?: null;
+        if (is_string($composerCommand) && $composerCommand !== '') {
+            passthru(sprintf('%s dump-autoload --working-dir=%s', $composerCommand, escapeshellarg($projectRoot)), $exitCode);
+
+            return $exitCode;
+        }
+
+        $projectComposer = $projectRoot . DIRECTORY_SEPARATOR . 'composer.phar';
+        if (is_file($projectComposer)) {
+            passthru(sprintf('php %s dump-autoload --working-dir=%s', escapeshellarg($projectComposer), escapeshellarg($projectRoot)), $exitCode);
+
+            return $exitCode;
+        }
+
+        passthru(sprintf('composer dump-autoload --working-dir=%s', escapeshellarg($projectRoot)), $exitCode);
+
+        return $exitCode;
     }
 }

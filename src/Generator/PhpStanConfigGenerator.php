@@ -13,26 +13,31 @@ final class PhpStanConfigGenerator
     {
         $stubFiles = [
             $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php',
-        ];
-
-        $scanFiles = [
-            $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Mage.php',
             $bridgeDirectory . DIRECTORY_SEPARATOR . 'varien.stub.php',
             $bridgeDirectory . DIRECTORY_SEPARATOR . 'magento-core.stub.php',
         ];
 
+        $scanFiles = [
+            $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Mage.php',
+        ];
+
         $scanDirectories = [
+            $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'code' . DIRECTORY_SEPARATOR . 'core',
             $projectRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'Varien',
         ];
 
         $lines = [
             'parameters:',
+            '    level: 0',
             '    stubFiles:',
         ];
 
         foreach ($stubFiles as $stubFile) {
             $lines[] = sprintf('        - %s', $this->neonPath($stubFile));
         }
+
+        $lines[] = '    bootstrapFiles:';
+        $lines[] = sprintf('        - %s', $this->neonPath($bridgeDirectory . DIRECTORY_SEPARATOR . 'autoload.php'));
 
         $lines[] = '    excludePaths:';
         $lines[] = '        analyseAndScan:';
@@ -57,19 +62,19 @@ final class PhpStanConfigGenerator
         $lines[] = '';
         $lines[] = 'services:';
         $lines[] = '    -';
-        $lines[] = '        class: Ioweb\M1PhpStanBridge\PHPStan\MageGetModelDynamicReturnTypeExtension';
+        $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageGetModelDynamicReturnTypeExtension';
         $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['model']));
         $lines[] = '        tags: [phpstan.broker.dynamicStaticMethodReturnTypeExtension]';
         $lines[] = '    -';
-        $lines[] = '        class: Ioweb\M1PhpStanBridge\PHPStan\MageGetSingletonDynamicReturnTypeExtension';
+        $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageGetSingletonDynamicReturnTypeExtension';
         $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['singleton']));
         $lines[] = '        tags: [phpstan.broker.dynamicStaticMethodReturnTypeExtension]';
         $lines[] = '    -';
-        $lines[] = '        class: Ioweb\M1PhpStanBridge\PHPStan\MageGetResourceModelDynamicReturnTypeExtension';
+        $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageGetResourceModelDynamicReturnTypeExtension';
         $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['resource-model']));
         $lines[] = '        tags: [phpstan.broker.dynamicStaticMethodReturnTypeExtension]';
         $lines[] = '    -';
-        $lines[] = '        class: Ioweb\M1PhpStanBridge\PHPStan\MageHelperDynamicReturnTypeExtension';
+        $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageHelperDynamicReturnTypeExtension';
         $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['helper']));
         $lines[] = '        tags: [phpstan.broker.dynamicStaticMethodReturnTypeExtension]';
         $lines[] = '';

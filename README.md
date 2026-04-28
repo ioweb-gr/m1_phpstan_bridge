@@ -40,6 +40,14 @@ Generated files are written under:
 ```
 
 The old giant `mage.stub.php` strategy is not used. Factory/helper aliases are written as PHP array maps and resolved by PHPStan dynamic return type extensions.
+The generator also registers the generated extension namespace in the target
+project `composer.json` under `autoload-dev`:
+
+```json
+"M1PhpStanBridgeGenerated\\": ".m1_phpstan_bridge/src/"
+```
+
+Run `composer dump-autoload` after generation if you do not use `--validate`.
 
 Include the generated config in your PHPStan config:
 
@@ -56,6 +64,7 @@ includes:
 - Supports Magento factory maps for `Mage::getModel`, `Mage::helper`, `Mage::getResourceModel`, and `Mage::getSingleton`.
 - Generates PHPStan map files under `.m1_phpstan_bridge/generated/`.
 - Registers PHPStan dynamic return type extensions for Magento factory methods.
+- Generates the PHPStan extension classes under `.m1_phpstan_bridge/src/PHPStan/`.
 - Generates small structural stubs for common Magento and Varien base classes.
 - Writes diagnostics under `.m1_phpstan_bridge/generated/diagnostics.json`.
 - Ignores unsupported metadata constructs such as `type(...)`.
