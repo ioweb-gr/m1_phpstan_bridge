@@ -8,15 +8,10 @@ final class PhpStanConfigGenerator
 {
     /**
      * @param array<string, string> $mapFiles
+     * @param list<string> $stubFiles
      */
-    public function generate(string $projectRoot, string $bridgeDirectory, array $mapFiles): string
+    public function generate(string $projectRoot, string $bridgeDirectory, array $mapFiles, array $stubFiles): string
     {
-        $stubFiles = [
-            $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php',
-            $bridgeDirectory . DIRECTORY_SEPARATOR . 'varien.stub.php',
-            $bridgeDirectory . DIRECTORY_SEPARATOR . 'magento-core.stub.php',
-        ];
-
         $scanFiles = [
             $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Mage.php',
         ];
@@ -32,6 +27,7 @@ final class PhpStanConfigGenerator
             '    stubFiles:',
         ];
 
+        ksort($stubFiles, SORT_STRING);
         foreach ($stubFiles as $stubFile) {
             $lines[] = sprintf('        - %s', $this->neonPath($stubFile));
         }

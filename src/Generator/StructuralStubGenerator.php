@@ -7,132 +7,55 @@ namespace Ioweb\M1PhpStanBridge\Generator;
 final class StructuralStubGenerator
 {
     /**
-     * @param array<string, array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * }> $classes
+     * @param array<string, string> $classMap
+     * @return array<string, string>
      */
-    public function mageFactories(array $classes): string
+    public function files(string $bridgeDirectory, string $projectRoot, array $classMap): array
     {
-        return $this->generate($this->onlyClasses($classes, static fn (string $className): bool => $className === 'Mage'));
+        $files = [];
+
+        if (is_file($projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Mage.php')) {
+            $files[$this->stubPath($bridgeDirectory, 'Mage')] = $this->renderClass('Mage', $this->methodOverrides()['Mage']);
+        }
+
+        if (isset($classMap['Varien_Object'])) {
+            $files[$this->stubPath($bridgeDirectory, 'Varien_Object')] = $this->renderClass(
+                'Varien_Object',
+                $this->methodOverrides()['Varien_Object']
+            );
+        }
+
+        ksort($files, SORT_STRING);
+
+        return $files;
     }
 
     /**
-     * @param array<string, array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * }> $classes
+     * @return array<string, string>
      */
-    public function magentoCore(array $classes): string
+    public function namespacesByFile(string $bridgeDirectory): array
     {
-        return $this->generate($this->onlyClasses(
-            $classes,
-            static fn (string $className): bool => str_starts_with($className, 'Mage_')
-        ));
+        return [
+            $this->stubPath($bridgeDirectory, 'Mage') => 'Mage',
+            $this->stubPath($bridgeDirectory, 'Varien_Object') => 'Varien_Object',
+        ];
     }
 
     /**
-     * @param array<string, array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * }> $classes
+     * @param array<string, string> $methods
      */
-    public function varien(array $classes): string
+    private function renderClass(string $className, array $methods): string
     {
-        return $this->generate($this->onlyClasses(
-            $classes,
-            static fn (string $className): bool => str_starts_with($className, 'Varien_')
-        ));
-    }
-
-    /**
-     * @param array<string, array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * }> $classes
-     */
-    private function generate(array $classes): string
-    {
-        foreach ($this->methodOverrides() as $className => $methods) {
-            if (!isset($classes[$className])) {
-                continue;
-            }
-
-            foreach ($methods as $methodName => $method) {
-                $classes[$className]['methods'][$methodName] = $method;
-            }
-        }
-
-        ksort($classes, SORT_STRING);
-
-        $chunks = ['<?php', ''];
-        foreach ($classes as $className => $class) {
-            $chunks[] = $this->renderClass($className, $class);
-            $chunks[] = '';
-        }
-
-        return rtrim(implode("\n", $chunks)) . "\n";
-    }
-
-    /**
-     * @param array<string, array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * }> $classes
-     * @return array<string, array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * }>
-     */
-    private function onlyClasses(array $classes, callable $predicate): array
-    {
-        return array_filter($classes, $predicate, ARRAY_FILTER_USE_KEY);
-    }
-
-    /**
-     * @param array{
-     *     kind: 'class'|'interface',
-     *     extends: list<string>,
-     *     implements: list<string>,
-     *     methods: array<string, string>
-     * } $class
-     */
-    private function renderClass(string $className, array $class): string
-    {
-        $declaration = $class['kind'] . ' ' . $className;
-
-        if ($class['extends'] !== []) {
-            $declaration .= ' extends ' . implode(', ', $class['extends']);
-        }
-
-        if ($class['kind'] === 'class' && $class['implements'] !== []) {
-            $declaration .= ' implements ' . implode(', ', $class['implements']);
-        }
-
-        if ($class['methods'] === []) {
-            return $declaration . ' {}';
-        }
-
-        ksort($class['methods'], SORT_STRING);
+        ksort($methods, SORT_STRING);
 
         $lines = [
-            $declaration,
+            '<?php',
+            '',
+            'class ' . $className,
             '{',
         ];
 
-        foreach ($class['methods'] as $method) {
+        foreach ($methods as $method) {
             foreach (explode("\n", $method) as $methodLine) {
                 $lines[] = '    ' . $methodLine;
             }
@@ -145,8 +68,19 @@ final class StructuralStubGenerator
         }
 
         $lines[] = '}';
+        $lines[] = '';
 
         return implode("\n", $lines);
+    }
+
+    private function stubPath(string $bridgeDirectory, string $className): string
+    {
+        return $bridgeDirectory
+            . DIRECTORY_SEPARATOR
+            . 'stubs'
+            . DIRECTORY_SEPARATOR
+            . str_replace('_', DIRECTORY_SEPARATOR, $className)
+            . '.stub.php';
     }
 
     /**

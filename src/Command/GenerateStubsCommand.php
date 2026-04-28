@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Ioweb\M1PhpStanBridge\Command;
 
 use Ioweb\M1PhpStanBridge\Discovery\ClassMapBuilder;
-use Ioweb\M1PhpStanBridge\Discovery\StructuralClassParser;
 use Ioweb\M1PhpStanBridge\Generator\BridgeFileWriter;
 use Ioweb\M1PhpStanBridge\Generator\ClassMapGenerator;
 use Ioweb\M1PhpStanBridge\Generator\PhpStanExtensionGenerator;
@@ -19,6 +18,8 @@ use Throwable;
 
 final class GenerateStubsCommand
 {
+    private const MAX_STUB_FILE_BYTES = 1048576;
+
     public function run(array $argv): int
     {
         $options = $this->parseArguments($argv);
@@ -42,7 +43,6 @@ final class GenerateStubsCommand
             $parser = new MetaParser();
             $builder = new MapBuilder();
             $classMapBuilder = new ClassMapBuilder();
-            $structuralClassParser = new StructuralClassParser();
             $classMapGenerator = new ClassMapGenerator();
             $categoryMapper = new MetadataCategoryMapper();
             $mapWriter = new AliasMapWriter();
@@ -74,9 +74,6 @@ final class GenerateStubsCommand
             }
 
             $classMap = $classMapBuilder->build($projectRoot);
-            $structuralClasses = $structuralClassParser->parse(
-                $this->structuralClassFiles($projectRoot, $classMap['map'])
-            );
             $classMapFile = $generatedDirectory . DIRECTORY_SEPARATOR . 'class-map.php';
             $classMapReportFile = $generatedDirectory . DIRECTORY_SEPARATOR . 'classmap-report.md';
             $classMapAutoloadFile = $bridgeDirectory . DIRECTORY_SEPARATOR . 'classmap-autoload.php';
@@ -87,10 +84,7 @@ final class GenerateStubsCommand
 
             if ($fileWriter->writeIfChanged(
                 $classMapAutoloadFile,
-                $classMapGenerator->renderAutoload(
-                    $classMapFile,
-                    $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php'
-                )
+                $classMapGenerator->renderAutoload($classMapFile)
             )) {
                 $written[] = $classMapAutoloadFile;
             }
@@ -108,11 +102,9 @@ final class GenerateStubsCommand
                 $written[] = $classMapReportFile;
             }
 
-            $stubFiles = [
-                $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php' => $structuralStubs->mageFactories($structuralClasses),
-                $bridgeDirectory . DIRECTORY_SEPARATOR . 'magento-core.stub.php' => $structuralStubs->magentoCore($structuralClasses),
-                $bridgeDirectory . DIRECTORY_SEPARATOR . 'varien.stub.php' => $structuralStubs->varien($structuralClasses),
-            ];
+            $stubFiles = $structuralStubs->files($bridgeDirectory, $projectRoot, $classMap['map']);
+            $stubNamespaces = $structuralStubs->namespacesByFile($bridgeDirectory);
+            $this->removeObsoleteStubFiles($bridgeDirectory, array_keys($stubFiles));
 
             foreach ($stubFiles as $path => $contents) {
                 if ($fileWriter->writeIfChanged($path, $contents)) {
@@ -133,7 +125,7 @@ final class GenerateStubsCommand
             $configPath = $bridgeDirectory . DIRECTORY_SEPARATOR . 'phpstan-magento.neon';
             if ($fileWriter->writeIfChanged(
                 $configPath,
-                $configGenerator->generate($projectRoot, $bridgeDirectory, $mapFiles)
+                $configGenerator->generate($projectRoot, $bridgeDirectory, $mapFiles, array_keys($stubFiles))
             )) {
                 $written[] = $configPath;
             }
@@ -152,7 +144,7 @@ final class GenerateStubsCommand
             $this->writeSummary($metaDirectory, $categories, $diagnostics, $written);
 
             if ($options['validate']) {
-                return $this->validateGeneratedBridge($projectRoot, $bridgeDirectory, $mapFiles);
+                return $this->validateGeneratedBridge($projectRoot, $bridgeDirectory, $mapFiles, $stubFiles, $stubNamespaces);
             }
 
             return 0;
@@ -163,43 +155,58 @@ final class GenerateStubsCommand
         }
     }
 
-    /**
-     * @param array<string, string> $classMap
-     * @return array<string, string>
-     */
-    private function structuralClassFiles(string $projectRoot, array $classMap): array
-    {
-        $files = [];
-        $mageFile = $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Mage.php';
-        if (is_file($mageFile)) {
-            $files['Mage'] = $mageFile;
-        }
-
-        foreach ($classMap as $className => $file) {
-            if (isset($files[$className]) || !$this->isStructuralClassFile($projectRoot, $file)) {
-                continue;
-            }
-
-            $files[$className] = $file;
-        }
-
-        ksort($files, SORT_STRING);
-
-        return $files;
-    }
-
-    private function isStructuralClassFile(string $projectRoot, string $file): bool
-    {
-        $normalizedRoot = rtrim(str_replace('\\', '/', $projectRoot), '/');
-        $normalizedFile = str_replace('\\', '/', $file);
-
-        return str_starts_with($normalizedFile, $normalizedRoot . '/app/code/core/')
-            || str_starts_with($normalizedFile, $normalizedRoot . '/lib/Varien/');
-    }
-
     private function writeUsage(): void
     {
         fwrite(STDERR, "Usage: generate-stubs [project-root] [--meta-path=/path/to/.phpstorm.meta.php] [--validate]\n");
+    }
+
+    /**
+     * @param list<string> $currentStubFiles
+     */
+    private function removeObsoleteStubFiles(string $bridgeDirectory, array $currentStubFiles): void
+    {
+        $current = array_fill_keys(array_map(
+            static fn (string $path): string => str_replace('\\', '/', $path),
+            $currentStubFiles
+        ), true);
+
+        $obsoleteRootStubs = [
+            $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php',
+            $bridgeDirectory . DIRECTORY_SEPARATOR . 'magento-core.stub.php',
+            $bridgeDirectory . DIRECTORY_SEPARATOR . 'varien.stub.php',
+        ];
+
+        foreach ($obsoleteRootStubs as $path) {
+            if (is_file($path) && !unlink($path)) {
+                throw new \RuntimeException(sprintf('Unable to remove obsolete generated stub: %s', $path));
+            }
+        }
+
+        $stubDirectory = $bridgeDirectory . DIRECTORY_SEPARATOR . 'stubs';
+        if (!is_dir($stubDirectory)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($stubDirectory, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                @rmdir($file->getPathname());
+                continue;
+            }
+
+            $path = $file->getPathname();
+            if (strtolower($file->getExtension()) !== 'php' || isset($current[str_replace('\\', '/', $path)])) {
+                continue;
+            }
+
+            if (!unlink($path)) {
+                throw new \RuntimeException(sprintf('Unable to remove obsolete generated stub: %s', $path));
+            }
+        }
     }
 
     /**
@@ -381,9 +388,22 @@ final class GenerateStubsCommand
 
     /**
      * @param array<string, string> $mapFiles
+     * @param array<string, string> $stubFiles
+     * @param array<string, string> $stubNamespaces
      */
-    private function validateGeneratedBridge(string $projectRoot, string $bridgeDirectory, array $mapFiles): int
+    private function validateGeneratedBridge(
+        string $projectRoot,
+        string $bridgeDirectory,
+        array $mapFiles,
+        array $stubFiles,
+        array $stubNamespaces
+    ): int
     {
+        $stubSizeExitCode = $this->validateStubFileSizes($stubFiles, $stubNamespaces);
+        if ($stubSizeExitCode !== 0) {
+            return $stubSizeExitCode;
+        }
+
         $dumpAutoloadExitCode = $this->dumpComposerAutoload($projectRoot);
         if ($dumpAutoloadExitCode !== 0) {
             return $dumpAutoloadExitCode;
@@ -419,6 +439,45 @@ final class GenerateStubsCommand
         }
 
         return $this->runPhpStanSmoke($projectRoot, $bridgeDirectory);
+    }
+
+    /**
+     * @param array<string, string> $stubFiles
+     * @param array<string, string> $stubNamespaces
+     */
+    private function validateStubFileSizes(array $stubFiles, array $stubNamespaces): int
+    {
+        $exitCode = 0;
+
+        foreach (array_keys($stubFiles) as $stubFile) {
+            if (!is_file($stubFile)) {
+                continue;
+            }
+
+            $bytes = filesize($stubFile);
+            if ($bytes === false || $bytes <= self::MAX_STUB_FILE_BYTES) {
+                continue;
+            }
+
+            $namespace = $stubNamespaces[$stubFile] ?? $this->stubNamespaceFromPath($stubFile);
+            fwrite(STDERR, sprintf(
+                "Generated stub file exceeds 1MB: %s (%d bytes, namespace: %s). "
+                . "Only PHPStan-specific augmentations should be stubbed; load real classes through the classmap autoloader or scanDirectories.\n",
+                $stubFile,
+                $bytes,
+                $namespace
+            ));
+            $exitCode = 1;
+        }
+
+        return $exitCode;
+    }
+
+    private function stubNamespaceFromPath(string $stubFile): string
+    {
+        $baseName = basename($stubFile, '.stub.php');
+
+        return str_replace(DIRECTORY_SEPARATOR, '_', $baseName);
     }
 
     private function runPhpStanSmoke(string $projectRoot, string $bridgeDirectory): int

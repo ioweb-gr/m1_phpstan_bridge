@@ -33,10 +33,9 @@ final class ClassMapGenerator
         return implode("\n", $lines);
     }
 
-    public function renderAutoload(string $classMapFile, string $mageStubFile): string
+    public function renderAutoload(string $classMapFile): string
     {
         $escapedMapFile = $this->escapeSingleQuoted($classMapFile);
-        $escapedMageStubFile = $this->escapeSingleQuoted($mageStubFile);
 
         return <<<PHP
 <?php
@@ -51,14 +50,6 @@ spl_autoload_register(static function (string \$class) use (\$classMap): void {
 
     require_once \$classMap[\$class];
 });
-
-spl_autoload_register(static function (string \$class): void {
-    if (\$class !== 'Mage' || class_exists('Mage', false)) {
-        return;
-    }
-
-    require_once '{$escapedMageStubFile}';
-}, true, true);
 
 PHP;
     }
