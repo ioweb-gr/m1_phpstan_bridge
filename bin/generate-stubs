@@ -24,4 +24,8 @@ if (!$autoloaded) {
     exit(1);
 }
 
+if (ini_get('memory_limit') !== '-1') {
+    ini_set('memory_limit', '1G');
+}
+
 exit((new GenerateStubsCommand())->run($argv));

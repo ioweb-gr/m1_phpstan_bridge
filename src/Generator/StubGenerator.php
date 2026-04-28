@@ -12,14 +12,44 @@ final class StubGenerator
      */
     public function generate(array $factories, array $methods): string
     {
+        $mageMethods = $methods['Mage'] ?? [];
+        unset($methods['Mage']);
+
         return implode("\n", [
             '<?php',
             '',
-            $this->generateMageDocBlock($factories),
-            'class Mage {}',
+            $this->generateMageStub($factories, $mageMethods),
             '',
             $this->generateClassStubs($methods),
         ]);
+    }
+
+    /**
+     * @param array<string, array<string, string>> $factories
+     */
+    private function generateMageStub(array $factories, array $methods): string
+    {
+        $lines = [
+            $this->generateMageDocBlock($factories),
+            'class Mage',
+            '{',
+        ];
+
+        foreach ($methods as $methodName => $returnType) {
+            $lines[] = '    /**';
+            $lines[] = sprintf('     * @return \\%s', $returnType);
+            $lines[] = '     */';
+            $lines[] = sprintf('    public function %s() {}', $methodName);
+            $lines[] = '';
+        }
+
+        if (end($lines) === '') {
+            array_pop($lines);
+        }
+
+        $lines[] = '}';
+
+        return implode("\n", $lines);
     }
 
     /**

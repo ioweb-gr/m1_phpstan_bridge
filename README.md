@@ -24,15 +24,18 @@ php bin/generate-stubs "/path/to/.phpstorm.meta.php"
 By default this writes:
 
 ```text
-stubs/mage.stub.php
+.m1_phpstan_bridge/mage.stub.php
 ```
+
+When the input directory is named `.phpstorm.meta.php`, the output is written
+next to it in the target project root.
 
 Use the generated stub in PHPStan:
 
 ```neon
 parameters:
     stubFiles:
-        - stubs/mage.stub.php
+        - .m1_phpstan_bridge/mage.stub.php
 ```
 
 ## Behavior

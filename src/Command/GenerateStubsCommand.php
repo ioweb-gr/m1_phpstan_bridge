@@ -14,7 +14,7 @@ final class GenerateStubsCommand
     public function run(array $argv): int
     {
         $metaDirectory = $argv[1] ?? null;
-        $outputFile = $argv[2] ?? getcwd() . DIRECTORY_SEPARATOR . 'stubs' . DIRECTORY_SEPARATOR . 'mage.stub.php';
+        $outputFile = $argv[2] ?? null;
 
         if ($metaDirectory === null || in_array($metaDirectory, ['-h', '--help'], true)) {
             $this->writeUsage();
@@ -26,6 +26,10 @@ final class GenerateStubsCommand
             $parser = new MetaParser();
             $builder = new MapBuilder();
             $generator = new StubGenerator();
+
+            if ($outputFile === null) {
+                $outputFile = $this->defaultOutputFile($metaDirectory);
+            }
 
             $maps = $builder->build($parser->parseDirectory($metaDirectory));
             $stub = $generator->generate($maps['factories'], $maps['methods']);
@@ -52,5 +56,19 @@ final class GenerateStubsCommand
     private function writeUsage(): void
     {
         fwrite(STDERR, "Usage: generate-stubs <meta-directory> [output-file]\n");
+    }
+
+    private function defaultOutputFile(string $metaDirectory): string
+    {
+        $normalizedMetaDirectory = rtrim($metaDirectory, "\\/");
+        $targetRoot = basename($normalizedMetaDirectory) === '.phpstorm.meta.php'
+            ? dirname($normalizedMetaDirectory)
+            : getcwd();
+
+        return $targetRoot
+            . DIRECTORY_SEPARATOR
+            . '.m1_phpstan_bridge'
+            . DIRECTORY_SEPARATOR
+            . 'mage.stub.php';
     }
 }
