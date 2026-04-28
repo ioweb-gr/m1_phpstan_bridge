@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Ioweb\M1PhpStanBridge\Command;
 
+use Ioweb\M1PhpStanBridge\Discovery\ClassMapBuilder;
 use Ioweb\M1PhpStanBridge\Generator\BridgeFileWriter;
+use Ioweb\M1PhpStanBridge\Generator\ClassMapGenerator;
 use Ioweb\M1PhpStanBridge\Generator\PhpStanExtensionGenerator;
 use Ioweb\M1PhpStanBridge\Generator\PhpStanConfigGenerator;
 use Ioweb\M1PhpStanBridge\Generator\StructuralStubGenerator;
@@ -38,6 +40,8 @@ final class GenerateStubsCommand
 
             $parser = new MetaParser();
             $builder = new MapBuilder();
+            $classMapBuilder = new ClassMapBuilder();
+            $classMapGenerator = new ClassMapGenerator();
             $categoryMapper = new MetadataCategoryMapper();
             $mapWriter = new AliasMapWriter();
             $fileWriter = new BridgeFileWriter();
@@ -65,6 +69,37 @@ final class GenerateStubsCommand
                 if ($fileWriter->writeIfChanged($path, $mapWriter->render($categories[$category] ?? []))) {
                     $written[] = $path;
                 }
+            }
+
+            $classMap = $classMapBuilder->build($projectRoot);
+            $classMapFile = $generatedDirectory . DIRECTORY_SEPARATOR . 'class-map.php';
+            $classMapReportFile = $generatedDirectory . DIRECTORY_SEPARATOR . 'classmap-report.md';
+            $classMapAutoloadFile = $bridgeDirectory . DIRECTORY_SEPARATOR . 'classmap-autoload.php';
+
+            if ($fileWriter->writeIfChanged($classMapFile, $classMapGenerator->renderMap($classMap['map']))) {
+                $written[] = $classMapFile;
+            }
+
+            if ($fileWriter->writeIfChanged(
+                $classMapAutoloadFile,
+                $classMapGenerator->renderAutoload(
+                    $classMapFile,
+                    $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php'
+                )
+            )) {
+                $written[] = $classMapAutoloadFile;
+            }
+
+            if ($fileWriter->writeIfChanged(
+                $classMapReportFile,
+                $classMapGenerator->renderReport(
+                    $classMap['duplicates'],
+                    $classMap['skippedUnsafeFiles'],
+                    $classMap['scannedFiles'],
+                    count($classMap['map'])
+                )
+            )) {
+                $written[] = $classMapReportFile;
             }
 
             $stubFiles = [

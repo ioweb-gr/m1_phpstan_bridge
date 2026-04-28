@@ -38,6 +38,7 @@ final class PhpStanConfigGenerator
 
         $lines[] = '    bootstrapFiles:';
         $lines[] = sprintf('        - %s', $this->neonPath($bridgeDirectory . DIRECTORY_SEPARATOR . 'autoload.php'));
+        $lines[] = sprintf('        - %s', $this->neonPath($bridgeDirectory . DIRECTORY_SEPARATOR . 'classmap-autoload.php'));
 
         $lines[] = '    excludePaths:';
         $lines[] = '        analyseAndScan:';
