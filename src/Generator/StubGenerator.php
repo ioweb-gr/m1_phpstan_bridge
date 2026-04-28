@@ -30,10 +30,21 @@ final class StubGenerator
     private function generateMageStub(array $factories, array $methods): string
     {
         $lines = [
-            $this->generateMageDocBlock($factories),
             'class Mage',
             '{',
         ];
+
+        foreach ($this->factoryMethodOrder() as $target => $parameterName) {
+            if (!isset($factories[$target])) {
+                continue;
+            }
+
+            array_push(
+                $lines,
+                ...$this->generateFactoryMethod(substr($target, strlen('Mage::')), $parameterName, $factories[$target])
+            );
+            $lines[] = '';
+        }
 
         foreach ($methods as $methodName => $returnType) {
             $lines[] = '    /**';
@@ -53,27 +64,58 @@ final class StubGenerator
     }
 
     /**
-     * @param array<string, array<string, string>> $factories
+     * @return array<string, string>
      */
-    private function generateMageDocBlock(array $factories): string
+    private function factoryMethodOrder(): array
     {
-        $lines = ['/**'];
+        return [
+            'Mage::getModel' => 'modelClass',
+            'Mage::getResourceModel' => 'modelClass',
+            'Mage::getSingleton' => 'modelClass',
+            'Mage::helper' => 'name',
+        ];
+    }
 
-        foreach ($factories as $target => $entries) {
-            $methodName = substr($target, strlen('Mage::'));
-            foreach ($entries as $alias => $className) {
-                $lines[] = sprintf(
-                    " * @method static \\%s %s('%s')",
-                    $className,
-                    $methodName,
-                    $this->escapeSingleQuoted($alias)
-                );
-            }
+    /**
+     * @param array<string, string> $entries
+     * @return list<string>
+     */
+    private function generateFactoryMethod(string $methodName, string $parameterName, array $entries): array
+    {
+        $lines = [
+            '    /**',
+            sprintf('     * @param string $%s', $parameterName),
+            '     * @param mixed $arguments',
+        ];
+
+        array_push($lines, ...$this->generateConditionalReturnTypeLines($parameterName, $entries));
+
+        $lines[] = '     */';
+        $lines[] = sprintf('    public static function %s($%s = \'\', $arguments = []) {}', $methodName, $parameterName);
+
+        return $lines;
+    }
+
+    /**
+     * @param array<string, string> $entries
+     */
+    private function generateConditionalReturnTypeLines(string $parameterName, array $entries): array
+    {
+        $lines = ['     * @phpstan-return ('];
+
+        foreach ($entries as $alias => $className) {
+            $lines[] = sprintf(
+                "     *     \$%s is '%s' ? \\%s : (",
+                $parameterName,
+                $this->escapeSingleQuoted($alias),
+                $className
+            );
         }
 
-        $lines[] = ' */';
+        $lines[] = '     *     object';
+        $lines[] = '     * ' . str_repeat(')', count($entries) + 1);
 
-        return implode("\n", $lines);
+        return $lines;
     }
 
     /**
