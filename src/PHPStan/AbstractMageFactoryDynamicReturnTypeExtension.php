@@ -7,7 +7,6 @@ namespace Ioweb\M1PhpStanBridge\PHPStan;
 use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\DynamicStaticMethodReturnTypeExtension;
 use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
@@ -44,11 +43,12 @@ abstract class AbstractMageFactoryDynamicReturnTypeExtension implements DynamicS
         }
 
         $argumentType = $scope->getType($methodCall->getArgs()[0]->value);
-        if (!$argumentType instanceof ConstantStringType) {
+        $constantStrings = $argumentType->getConstantStrings();
+        if ($constantStrings === []) {
             return $this->fallbackType();
         }
 
-        $alias = $argumentType->getValue();
+        $alias = $constantStrings[0]->getValue();
         if (!isset($this->map[$alias]) || !is_string($this->map[$alias]) || $this->map[$alias] === '') {
             return $this->fallbackType();
         }

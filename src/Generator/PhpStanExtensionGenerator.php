@@ -60,7 +60,6 @@ namespace M1PhpStanBridgeGenerated\PHPStan;
 use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\DynamicStaticMethodReturnTypeExtension;
 use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
@@ -97,11 +96,12 @@ abstract class AbstractMageFactoryDynamicReturnTypeExtension implements DynamicS
         }
 
         $argumentType = $scope->getType($methodCall->getArgs()[0]->value);
-        if (!$argumentType instanceof ConstantStringType) {
+        $constantStrings = $argumentType->getConstantStrings();
+        if ($constantStrings === []) {
             return $this->fallbackType();
         }
 
-        $alias = $argumentType->getValue();
+        $alias = $constantStrings[0]->getValue();
         if (!isset($this->map[$alias]) || !is_string($this->map[$alias]) || $this->map[$alias] === '') {
             return $this->fallbackType();
         }
@@ -152,7 +152,6 @@ namespace M1PhpStanBridgeGenerated\PHPStan;
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\DynamicMethodReturnTypeExtension;
 use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
@@ -189,11 +188,12 @@ final class MageLayoutCreateBlockDynamicReturnTypeExtension implements DynamicMe
         }
 
         $argumentType = $scope->getType($methodCall->getArgs()[0]->value);
-        if (!$argumentType instanceof ConstantStringType) {
+        $constantStrings = $argumentType->getConstantStrings();
+        if ($constantStrings === []) {
             return new MixedType();
         }
 
-        $alias = $argumentType->getValue();
+        $alias = $constantStrings[0]->getValue();
         if (!isset($this->map[$alias]) || !is_string($this->map[$alias]) || $this->map[$alias] === '') {
             return new MixedType();
         }

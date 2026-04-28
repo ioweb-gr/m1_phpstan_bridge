@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ioweb\M1PhpStanBridge\Command;
 
 use Ioweb\M1PhpStanBridge\Discovery\ClassMapBuilder;
+use Ioweb\M1PhpStanBridge\Discovery\StructuralClassParser;
 use Ioweb\M1PhpStanBridge\Generator\BridgeFileWriter;
 use Ioweb\M1PhpStanBridge\Generator\ClassMapGenerator;
 use Ioweb\M1PhpStanBridge\Generator\PhpStanExtensionGenerator;
@@ -41,6 +42,7 @@ final class GenerateStubsCommand
             $parser = new MetaParser();
             $builder = new MapBuilder();
             $classMapBuilder = new ClassMapBuilder();
+            $structuralClassParser = new StructuralClassParser();
             $classMapGenerator = new ClassMapGenerator();
             $categoryMapper = new MetadataCategoryMapper();
             $mapWriter = new AliasMapWriter();
@@ -72,6 +74,9 @@ final class GenerateStubsCommand
             }
 
             $classMap = $classMapBuilder->build($projectRoot);
+            $structuralClasses = $structuralClassParser->parse(
+                $this->structuralClassFiles($projectRoot, $classMap['map'])
+            );
             $classMapFile = $generatedDirectory . DIRECTORY_SEPARATOR . 'class-map.php';
             $classMapReportFile = $generatedDirectory . DIRECTORY_SEPARATOR . 'classmap-report.md';
             $classMapAutoloadFile = $bridgeDirectory . DIRECTORY_SEPARATOR . 'classmap-autoload.php';
@@ -104,9 +109,9 @@ final class GenerateStubsCommand
             }
 
             $stubFiles = [
-                $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php' => $structuralStubs->mageFactories(),
-                $bridgeDirectory . DIRECTORY_SEPARATOR . 'magento-core.stub.php' => $structuralStubs->magentoCore(),
-                $bridgeDirectory . DIRECTORY_SEPARATOR . 'varien.stub.php' => $structuralStubs->varien(),
+                $bridgeDirectory . DIRECTORY_SEPARATOR . 'mage-factories.stub.php' => $structuralStubs->mageFactories($structuralClasses),
+                $bridgeDirectory . DIRECTORY_SEPARATOR . 'magento-core.stub.php' => $structuralStubs->magentoCore($structuralClasses),
+                $bridgeDirectory . DIRECTORY_SEPARATOR . 'varien.stub.php' => $structuralStubs->varien($structuralClasses),
             ];
 
             foreach ($stubFiles as $path => $contents) {
@@ -134,7 +139,7 @@ final class GenerateStubsCommand
             }
 
             $diagnosticsPath = $generatedDirectory . DIRECTORY_SEPARATOR . 'diagnostics.json';
-            $diagnostics = $this->diagnostics($overrides, $categories, $projectRoot);
+            $diagnostics = $this->diagnostics($overrides, $categories, $classMap['map']);
             if ($fileWriter->writeIfChanged($diagnosticsPath, json_encode($diagnostics, JSON_PRETTY_PRINT) . "\n")) {
                 $written[] = $diagnosticsPath;
             }
@@ -156,6 +161,40 @@ final class GenerateStubsCommand
 
             return 1;
         }
+    }
+
+    /**
+     * @param array<string, string> $classMap
+     * @return array<string, string>
+     */
+    private function structuralClassFiles(string $projectRoot, array $classMap): array
+    {
+        $files = [];
+        $mageFile = $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Mage.php';
+        if (is_file($mageFile)) {
+            $files['Mage'] = $mageFile;
+        }
+
+        foreach ($classMap as $className => $file) {
+            if (isset($files[$className]) || !$this->isStructuralClassFile($projectRoot, $file)) {
+                continue;
+            }
+
+            $files[$className] = $file;
+        }
+
+        ksort($files, SORT_STRING);
+
+        return $files;
+    }
+
+    private function isStructuralClassFile(string $projectRoot, string $file): bool
+    {
+        $normalizedRoot = rtrim(str_replace('\\', '/', $projectRoot), '/');
+        $normalizedFile = str_replace('\\', '/', $file);
+
+        return str_starts_with($normalizedFile, $normalizedRoot . '/app/code/core/')
+            || str_starts_with($normalizedFile, $normalizedRoot . '/lib/Varien/');
     }
 
     private function writeUsage(): void
@@ -237,9 +276,10 @@ final class GenerateStubsCommand
     /**
      * @param array<int, array{target: string, entries: array<string, string>}> $overrides
      * @param array<string, array<string, string>> $categories
+     * @param array<string, string> $classMap
      * @return array<string, mixed>
      */
-    private function diagnostics(array $overrides, array $categories, string $projectRoot): array
+    private function diagnostics(array $overrides, array $categories, array $classMap): array
     {
         $duplicates = [];
         $seen = [];
@@ -272,7 +312,7 @@ final class GenerateStubsCommand
             'duplicateAliases' => $duplicates,
             'missingMetadataCategories' => $missingCategories,
             'missingExpectedCoreAliases' => $this->missingExpectedCoreAliases($categories),
-            'unresolvedClasses' => $this->unresolvedClasses($categories, $projectRoot),
+            'unresolvedClasses' => $this->unresolvedClasses($categories, $classMap),
         ];
     }
 
@@ -302,14 +342,15 @@ final class GenerateStubsCommand
 
     /**
      * @param array<string, array<string, string>> $categories
+     * @param array<string, string> $classMap
      * @return array<int, array{category: string, alias: string, class: string}>
      */
-    private function unresolvedClasses(array $categories, string $projectRoot): array
+    private function unresolvedClasses(array $categories, array $classMap): array
     {
         $unresolved = [];
         foreach ($categories as $category => $aliases) {
             foreach ($aliases as $alias => $className) {
-                if (!$this->classPathExists($projectRoot, $className)) {
+                if (!isset($classMap[ltrim($className, '\\')])) {
                     $unresolved[] = [
                         'category' => $category,
                         'alias' => $alias,
@@ -320,25 +361,6 @@ final class GenerateStubsCommand
         }
 
         return $unresolved;
-    }
-
-    private function classPathExists(string $projectRoot, string $className): bool
-    {
-        $relativePath = str_replace('_', DIRECTORY_SEPARATOR, ltrim($className, '\\')) . '.php';
-        $roots = [
-            $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'code' . DIRECTORY_SEPARATOR . 'core',
-            $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'code' . DIRECTORY_SEPARATOR . 'community',
-            $projectRoot . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'code' . DIRECTORY_SEPARATOR . 'local',
-            $projectRoot . DIRECTORY_SEPARATOR . 'lib',
-        ];
-
-        foreach ($roots as $root) {
-            if (is_file($root . DIRECTORY_SEPARATOR . $relativePath)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
