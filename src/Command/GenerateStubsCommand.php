@@ -416,6 +416,56 @@ final class GenerateStubsCommand
         file_put_contents($smokeFile, <<<'PHP'
 <?php
 
+/**
+ * @return Mage_Catalog_Model_Product
+ */
+function m1_phpstan_bridge_smoke_model()
+{
+    return Mage::getModel('catalog/product');
+}
+
+/**
+ * @return Mage_Core_Model_Resource
+ */
+function m1_phpstan_bridge_smoke_singleton()
+{
+    return Mage::getSingleton('core/resource');
+}
+
+/**
+ * @return Mage_Sales_Model_Resource_Order_Collection
+ */
+function m1_phpstan_bridge_smoke_resource_model()
+{
+    return Mage::getResourceModel('sales/order_collection');
+}
+
+/**
+ * @return Mage_Catalog_Helper_Data
+ */
+function m1_phpstan_bridge_smoke_helper()
+{
+    return Mage::helper('catalog');
+}
+
+/**
+ * @return Mage_Core_Block_Template
+ */
+function m1_phpstan_bridge_smoke_block_singleton()
+{
+    return Mage::getBlockSingleton('core/template');
+}
+
+/**
+ * @return Mage_Core_Block_Template
+ */
+function m1_phpstan_bridge_smoke_layout_block()
+{
+    $layout = new Mage_Core_Model_Layout();
+
+    return $layout->createBlock('core/template');
+}
+
 $product = Mage::getModel('catalog/product');
 $resource = Mage::getSingleton('core/resource');
 $orderCollection = Mage::getResourceModel('sales/order_collection');
@@ -423,13 +473,6 @@ $helper = Mage::helper('catalog');
 $blockSingleton = Mage::getBlockSingleton('core/template');
 $layout = new Mage_Core_Model_Layout();
 $createdBlock = $layout->createBlock('core/template');
-
-\PHPStan\dumpType($product);
-\PHPStan\dumpType($resource);
-\PHPStan\dumpType($orderCollection);
-\PHPStan\dumpType($helper);
-\PHPStan\dumpType($blockSingleton);
-\PHPStan\dumpType($createdBlock);
 
 PHP);
 
@@ -443,30 +486,14 @@ PHP);
         exec($command . ' 2>&1', $output, $exitCode);
         $outputText = implode("\n", $output);
 
-        $expectedTypes = [
-            'Mage_Core_Model_Resource',
-            'Mage_Sales_Model_Resource_Order_Collection',
-            'Mage_Catalog_Helper_Data',
-            'Mage_Core_Block_Template',
-        ];
-
-        foreach ($expectedTypes as $expectedType) {
-            if (strpos($outputText, $expectedType) === false) {
-                fwrite(STDERR, "PHPStan smoke validation did not infer expected type: {$expectedType}\n");
-                fwrite(STDERR, $outputText . "\n");
-
-                return $exitCode === 0 ? 1 : $exitCode;
-            }
-        }
-
-        if (strpos($outputText, 'Dumped type: mixed') !== false) {
-            fwrite(STDERR, "PHPStan smoke validation returned mixed for at least one known Magento alias.\n");
+        if ($exitCode !== 0) {
+            fwrite(STDERR, "PHPStan smoke validation failed.\n");
             fwrite(STDERR, $outputText . "\n");
 
-            return $exitCode === 0 ? 1 : $exitCode;
+            return $exitCode;
         }
 
-        fwrite(STDOUT, "PHPStan smoke validation inferred Magento factory types.\n");
+        fwrite(STDOUT, "PHPStan smoke validation passed.\n");
 
         return 0;
     }
