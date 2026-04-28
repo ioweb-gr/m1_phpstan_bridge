@@ -251,6 +251,7 @@ final class GenerateStubsCommand
             'singleton' => 'core/resource',
             'resource-model' => 'sales/order_collection',
             'helper' => 'catalog',
+            'block' => 'core/template',
         ];
 
         $missing = [];
@@ -383,11 +384,16 @@ $product = Mage::getModel('catalog/product');
 $resource = Mage::getSingleton('core/resource');
 $orderCollection = Mage::getResourceModel('sales/order_collection');
 $helper = Mage::helper('catalog');
+$blockSingleton = Mage::getBlockSingleton('core/template');
+$layout = new Mage_Core_Model_Layout();
+$createdBlock = $layout->createBlock('core/template');
 
 \PHPStan\dumpType($product);
 \PHPStan\dumpType($resource);
 \PHPStan\dumpType($orderCollection);
 \PHPStan\dumpType($helper);
+\PHPStan\dumpType($blockSingleton);
+\PHPStan\dumpType($createdBlock);
 
 PHP);
 
@@ -405,6 +411,7 @@ PHP);
             'Mage_Core_Model_Resource',
             'Mage_Sales_Model_Resource_Order_Collection',
             'Mage_Catalog_Helper_Data',
+            'Mage_Core_Block_Template',
         ];
 
         foreach ($expectedTypes as $expectedType) {

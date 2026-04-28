@@ -11,6 +11,8 @@ final class MetadataCategoryMapper
         'Mage::getSingleton' => 'singleton',
         'Mage::getResourceModel' => 'resource-model',
         'Mage::helper' => 'helper',
+        'Mage::getBlockSingleton' => 'block',
+        'Mage_Core_Model_Layout::createBlock' => 'block',
     ];
 
     /**

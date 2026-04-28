@@ -77,6 +77,14 @@ final class PhpStanConfigGenerator
         $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageHelperDynamicReturnTypeExtension';
         $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['helper']));
         $lines[] = '        tags: [phpstan.broker.dynamicStaticMethodReturnTypeExtension]';
+        $lines[] = '    -';
+        $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageGetBlockSingletonDynamicReturnTypeExtension';
+        $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['block']));
+        $lines[] = '        tags: [phpstan.broker.dynamicStaticMethodReturnTypeExtension]';
+        $lines[] = '    -';
+        $lines[] = '        class: M1PhpStanBridgeGenerated\PHPStan\MageLayoutCreateBlockDynamicReturnTypeExtension';
+        $lines[] = sprintf('        arguments: [%s]', $this->neonString($mapFiles['block']));
+        $lines[] = '        tags: [phpstan.broker.dynamicMethodReturnTypeExtension]';
         $lines[] = '';
 
         return implode("\n", $lines);

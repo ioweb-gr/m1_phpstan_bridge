@@ -28,6 +28,13 @@ class Mage
     public static function getSingleton($modelClass = '', $arguments = []) {}
 
     /**
+     * @param string $blockClass
+     * @param mixed $arguments
+     * @return object|null
+     */
+    public static function getBlockSingleton($blockClass = '', $arguments = []) {}
+
+    /**
      * @param string $modelClass
      * @param mixed $arguments
      * @return object|null
@@ -271,6 +278,17 @@ class Mage_Adminhtml_Block_Widget_Form_Container extends Mage_Adminhtml_Block_Wi
 class Mage_Core_Block_Template extends Mage_Core_Block_Abstract {}
 class Mage_Adminhtml_Block_Template extends Mage_Core_Block_Template {}
 interface Mage_Adminhtml_Block_Widget_Tab_Interface {}
+
+class Mage_Core_Model_Layout extends Varien_Object
+{
+    /**
+     * @param string $type
+     * @param string $name
+     * @param array<string, mixed> $attributes
+     * @return object|null
+     */
+    public function createBlock($type, $name = '', array $attributes = []) {}
+}
 
 class Mage_Adminhtml_Block_System_Config_Form_Field extends Mage_Adminhtml_Block_Widget
 {

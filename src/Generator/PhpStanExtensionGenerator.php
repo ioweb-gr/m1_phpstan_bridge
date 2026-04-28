@@ -16,10 +16,12 @@ final class PhpStanExtensionGenerator
         return [
             $bridgeDirectory . DIRECTORY_SEPARATOR . 'autoload.php' => $this->autoload(),
             $sourceDirectory . DIRECTORY_SEPARATOR . 'AbstractMageFactoryDynamicReturnTypeExtension.php' => $this->abstractExtension(),
+            $sourceDirectory . DIRECTORY_SEPARATOR . 'MageLayoutCreateBlockDynamicReturnTypeExtension.php' => $this->layoutCreateBlockExtension(),
             $sourceDirectory . DIRECTORY_SEPARATOR . 'MageGetModelDynamicReturnTypeExtension.php' => $this->concreteExtension('MageGetModelDynamicReturnTypeExtension', 'getModel'),
             $sourceDirectory . DIRECTORY_SEPARATOR . 'MageGetSingletonDynamicReturnTypeExtension.php' => $this->concreteExtension('MageGetSingletonDynamicReturnTypeExtension', 'getSingleton'),
             $sourceDirectory . DIRECTORY_SEPARATOR . 'MageGetResourceModelDynamicReturnTypeExtension.php' => $this->concreteExtension('MageGetResourceModelDynamicReturnTypeExtension', 'getResourceModel'),
             $sourceDirectory . DIRECTORY_SEPARATOR . 'MageHelperDynamicReturnTypeExtension.php' => $this->concreteExtension('MageHelperDynamicReturnTypeExtension', 'helper'),
+            $sourceDirectory . DIRECTORY_SEPARATOR . 'MageGetBlockSingletonDynamicReturnTypeExtension.php' => $this->concreteExtension('MageGetBlockSingletonDynamicReturnTypeExtension', 'getBlockSingleton'),
         ];
     }
 
@@ -132,6 +134,71 @@ final class {$className} extends AbstractMageFactoryDynamicReturnTypeExtension
     protected function methodName(): string
     {
         return '{$methodName}';
+    }
+}
+
+PHP;
+    }
+
+    private function layoutCreateBlockExtension(): string
+    {
+        return <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace M1PhpStanBridgeGenerated\PHPStan;
+
+use PhpParser\Node\Expr\MethodCall;
+use PHPStan\Analyser\Scope;
+use PHPStan\Reflection\MethodReflection;
+use PHPStan\Type\Constant\ConstantStringType;
+use PHPStan\Type\DynamicMethodReturnTypeExtension;
+use PHPStan\Type\MixedType;
+use PHPStan\Type\ObjectType;
+use PHPStan\Type\Type;
+
+final class MageLayoutCreateBlockDynamicReturnTypeExtension implements DynamicMethodReturnTypeExtension
+{
+    /** @var array<string, class-string> */
+    private array $map;
+
+    public function __construct(string $mapFile)
+    {
+        $map = is_file($mapFile) ? require $mapFile : [];
+        $this->map = is_array($map) ? $map : [];
+    }
+
+    public function getClass(): string
+    {
+        return 'Mage_Core_Model_Layout';
+    }
+
+    public function isMethodSupported(MethodReflection $methodReflection): bool
+    {
+        return $methodReflection->getName() === 'createBlock';
+    }
+
+    public function getTypeFromMethodCall(
+        MethodReflection $methodReflection,
+        MethodCall $methodCall,
+        Scope $scope
+    ): Type {
+        if (!isset($methodCall->getArgs()[0])) {
+            return new MixedType();
+        }
+
+        $argumentType = $scope->getType($methodCall->getArgs()[0]->value);
+        if (!$argumentType instanceof ConstantStringType) {
+            return new MixedType();
+        }
+
+        $alias = $argumentType->getValue();
+        if (!isset($this->map[$alias]) || !is_string($this->map[$alias]) || $this->map[$alias] === '') {
+            return new MixedType();
+        }
+
+        return new ObjectType(ltrim($this->map[$alias], '\\'));
     }
 }
 

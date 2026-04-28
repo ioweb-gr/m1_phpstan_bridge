@@ -11,6 +11,8 @@ final class MapBuilder
         'Mage::helper',
         'Mage::getResourceModel',
         'Mage::getSingleton',
+        'Mage::getBlockSingleton',
+        'Mage_Core_Model_Layout::createBlock',
     ];
 
     /**
